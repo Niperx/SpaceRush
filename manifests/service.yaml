@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: space-service
+spec:
+  sessionAffinity: ClientIP  # Sticky sessions для WebSocket
+  selector:
+    app: space     # метка в Deployment
+  ports:
+    - protocol: TCP
+      port: 80      # порт сервиса
+      targetPort: 3000  # порт контейнера
