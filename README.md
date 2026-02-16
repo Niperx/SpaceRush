@@ -2,25 +2,25 @@
 
 ![SpaceRush](https://i.imgur.com/vhAj30A.png)
 
-Многопользовательская браузерная игра: каждый игрок — планета. Развивай экономику, строй флот, атакуй соседей и добывай астероиды. Canvas 2D + Socket.io, без тяжёлых фреймворков.
+Multiplayer browser game: each player is a planet. Build your economy, raise a fleet, attack neighbors, and mine asteroids. Canvas 2D + Socket.io — no heavy frameworks.
 
-## Запуск
+## Run
 
 ```bash
 npm install
 npm start
 ```
 
-Открой в браузере: **http://localhost:3000**
+Open in browser: **http://localhost:3000**
 
-## Основное
+## Overview
 
-- **Никнейм** — один раз, сохраняется между сессиями
-- **Улучшения** — экономика, военное дело, укрепление
-- **Флот и щит** — покупка за ресурсы, флот для атак и добычи астероидов
-- **PvP** — режим атаки → клик по чужой планете → выбор флота. Победа/поражение с экраном смерти и респавном
-- **Язык** — переключатель RU/EN в правом верхнем углу
+- **Nickname** — set once, saved between sessions
+- **Upgrades** — economy, military, fortification
+- **Fleet & shield** — buy with resources; fleet for attacks and asteroid mining
+- **PvP** — attack mode → click enemy planet → choose fleet size. Win/lose with death screen and respawn
+- **Language** — RU/EN toggle in the top-right corner
 
-## Стек
+## Stack
 
-Node.js, Express, Socket.io, HTML5 Canvas 2D, Vanilla JS. Сервер слушает на `0.0.0.0` — можно играть по LAN.
+Node.js, Express, Socket.io, HTML5 Canvas 2D, Vanilla JS. Server listens on `0.0.0.0` — play over LAN.
