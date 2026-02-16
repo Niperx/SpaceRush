@@ -1,6 +1,6 @@
 # SpaceRush
 
-![SpaceRush](https://i.imgur.com/m0grXI4.png)
+![SpaceRush](https://i.imgur.com/vhAj30A.png)
 
 Многопользовательская браузерная игра: каждый игрок — планета. Развивай экономику, строй флот, атакуй соседей и добывай астероиды. Canvas 2D + Socket.io, без тяжёлых фреймворков.
 
