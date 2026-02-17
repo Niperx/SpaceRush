@@ -1332,11 +1332,17 @@
       `${Math.floor(MIL_COST_BASE * Math.pow(MIL_COST_MULT, me.militaryLvl))} ${resShort}`;
     document.getElementById('cost-fort').textContent =
       `${Math.floor(FORT_COST_BASE * Math.pow(FORT_COST_MULT, me.fortLvl))} ${resShort}`;
-    // Динамические цены кораблей/щитов
+
+    // Динамические цены кораблей/щитов (с учётом флота в миссиях)
+    const fleetInMissions = missionsArr
+      .filter(m => m.owner === myNick && m.fleetCount)
+      .reduce((sum, m) => sum + m.fleetCount, 0);
+    const effectiveFleet = me.fleet + fleetInMissions;
+
     document.getElementById('buy-f1-cost').textContent =
-      `${fleetBuyCostClient(me.fleet, 1)} ${resShort}`;
+      `${fleetBuyCostClient(effectiveFleet, 1)} ${resShort}`;
     document.getElementById('buy-f10-cost').textContent =
-      `${fleetBuyCostClient(me.fleet, 10)} ${resShort}`;
+      `${fleetBuyCostClient(effectiveFleet, 10)} ${resShort}`;
     document.getElementById('buy-d5-cost').textContent =
       `${defenseBuyCostClient(me.defense, 5)} ${resShort}`;
   }
@@ -1395,7 +1401,7 @@
   function updateTradePlayerSelect() {
     const currentValue = tradePlayerSelect.value; // Сохраняем выбор
     const me = playersArr.find(p => p.nick === myNick);
-    const others = playersArr.filter(p => p.nick !== myNick && p.nick);
+    const others = playersArr.filter(p => p.nick !== myNick && p.nick && !p.isBot); // Исключаем ботов
     tradePlayerSelect.innerHTML = '<option value="">Выберите игрока</option>' +
       others.map(p => `<option value="${p.nick}">${p.nick} (${p.res} res)</option>`).join('');
     if (currentValue && others.some(p => p.nick === currentValue)) {
@@ -2023,7 +2029,8 @@
 
     ctx.fillStyle = isMe ? '#b388ff' : (p.online ? '#ccc' : '#555');
     ctx.font = 'bold 12px Segoe UI'; ctx.textAlign = 'center';
-    ctx.fillText(p.nick, sx, sy-pr-12);
+    const displayNick = p.isBot ? `${p.nick} [AI]` : p.nick;
+    ctx.fillText(displayNick, sx, sy-pr-12);
     if (p.allianceName) {
       ctx.fillStyle = 'rgba(179,136,255,.7)'; ctx.font = '9px Segoe UI';
       ctx.fillText(`[${p.allianceName}]`, sx, sy-pr+2);

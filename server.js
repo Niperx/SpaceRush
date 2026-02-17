@@ -135,6 +135,14 @@ const ASTEROID_MAX_RES = 200;
 const ASTEROID_RESPAWN = 60000;     // 60 сек
 const MINER_SPEED = 30;            // px/сек (медленнее флота)
 
+// AI боты
+const BOT_NAMES = ['Зевс', 'Атлант', 'Кронос', 'Гелиос', 'Арес', 'Посейдон', 'Гермес', 'Аполлон', 'Гефест', 'Дионис', 'Персей', 'Орион', 'Титан', 'Астра', 'Нова'];
+const BOTS_PER_PLAYER = 1.5;       // 1-2 бота на игрока (в среднем)
+const BOT_TICK_INTERVAL = 5000;    // AI обновление раз в 5 сек
+const BOT_UPGRADE_CHANCE = 0.3;    // 30% шанс апгрейда при наличии res
+const BOT_ATTACK_CHANCE = 0.15;    // 15% шанс атаки
+const BOT_MINE_CHANCE = 0.4;       // 40% шанс добычи астероида
+
 // ── Утилиты ───────────────────────────────────────────────
 function randInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -177,7 +185,7 @@ function findSpawnPosition() {
   return { x: randInt(margin, w - margin), y: randInt(margin, h - margin) };
 }
 
-function createPlayer(nick) {
+function createPlayer(nick, isBot = false) {
   const { x, y } = findSpawnPosition();
   return {
     nick,
@@ -195,8 +203,133 @@ function createPlayer(nick) {
     online: true,
     color: `hsl(${randInt(0, 360)}, 70%, 55%)`,
     allianceName: null,
-    wins: 0
+    wins: 0,
+    isBot
   };
+}
+
+// ── AI Боты ───────────────────────────────────────────────
+function createBot() {
+  const usedNames = Object.values(players).filter(p => p.isBot).map(p => p.nick);
+  const availableNames = BOT_NAMES.filter(n => !usedNames.includes(n));
+  if (availableNames.length === 0) return null; // Нет свободных имён
+  const name = availableNames[randInt(0, availableNames.length - 1)];
+  const bot = createPlayer(name, true);
+  bot.lvl = randInt(1, 4); // Боты слабее игроков
+  bot.res = bot.lvl * 30;
+  bot.fleet = randInt(5, 15);
+  bot.defense = randInt(0, 10);
+  bot.color = `hsl(${randInt(0, 60)}, 30%, 50%)`; // Серо-коричневый оттенок для ботов
+  return bot;
+}
+
+function manageBots() {
+  const humanCount = Object.values(players).filter(p => !p.isBot).length;
+  const botCount = Object.values(players).filter(p => p.isBot).length;
+  const targetBots = Math.floor(humanCount * BOTS_PER_PLAYER);
+
+  // Добавляем ботов
+  if (botCount < targetBots) {
+    const toAdd = Math.min(2, targetBots - botCount); // Не более 2 за раз
+    for (let i = 0; i < toAdd; i++) {
+      const bot = createBot();
+      if (bot) {
+        players[bot.nick] = bot;
+        persist(bot.nick);
+      }
+    }
+  }
+
+  // Удаляем лишних ботов
+  if (botCount > targetBots + 2) { // Гистерезис ±2
+    const bots = Object.values(players).filter(p => p.isBot);
+    const toRemove = botCount - targetBots;
+    for (let i = 0; i < toRemove && i < bots.length; i++) {
+      const bot = bots[i];
+      delete players[bot.nick];
+      removePersist(bot.nick);
+      // Удаляем миссии бота
+      for (let j = missions.length - 1; j >= 0; j--) {
+        if (missions[j].owner === bot.nick) missions.splice(j, 1);
+      }
+    }
+  }
+}
+
+function botTick() {
+  const bots = Object.values(players).filter(p => p.isBot);
+  for (const bot of bots) {
+    // Доход ресурсов (уже идёт в основном тике)
+
+    // Случайные апгрейды
+    if (Math.random() < BOT_UPGRADE_CHANCE) {
+      if (bot.res >= lvlUpCost(bot.lvl) && bot.lvl < 5) {
+        bot.res -= lvlUpCost(bot.lvl);
+        bot.lvl++;
+      } else if (bot.res >= fleetBuyCost(getEffectiveFleet(bot.nick), 5)) {
+        bot.res -= fleetBuyCost(getEffectiveFleet(bot.nick), 5);
+        bot.fleet += 5;
+      } else if (bot.res >= defenseBuyCost(bot.defense, 3) && bot.defense < 20) {
+        bot.res -= defenseBuyCost(bot.defense, 3);
+        bot.defense += 3;
+      }
+    }
+
+    // Добыча астероидов
+    if (Math.random() < BOT_MINE_CHANCE && bot.fleet > 0) {
+      const nearAsteroids = asteroids.filter(a => {
+        if (!a.alive) return false;
+        const d = dist(bot.x, bot.y, a.x, a.y);
+        return d < 1500; // В пределах 1500px
+      });
+      if (nearAsteroids.length > 0) {
+        const asteroid = nearAsteroids[randInt(0, nearAsteroids.length - 1)];
+        bot.fleet -= 1;
+        missions.push({
+          type: 'mine',
+          owner: bot.nick,
+          asteroidId: asteroid.id,
+          x: bot.x, y: bot.y,
+          tx: asteroid.x, ty: asteroid.y,
+          speed: MINER_SPEED
+        });
+      }
+    }
+
+    // Атака слабых целей
+    if (Math.random() < BOT_ATTACK_CHANCE && bot.fleet > 10) {
+      const now = Date.now();
+      if (now - bot.lastAttack < ATTACK_COOLDOWN) continue;
+
+      const targets = Object.values(players).filter(p => {
+        if (p.nick === bot.nick || p.isBot) return false;
+        if (isProtected(p)) return false;
+        const d = dist(bot.x, bot.y, p.x, p.y);
+        return d < 2000; // В пределах 2000px
+      });
+
+      if (targets.length > 0) {
+        // Атакуем самую слабую цель
+        const weakest = targets.sort((a, b) => (a.fleet + a.defense) - (b.fleet + b.defense))[0];
+        const toSend = Math.min(bot.fleet, randInt(5, 15));
+        bot.fleet -= toSend;
+        bot.lastAttack = now;
+
+        const speed = FLEET_SPEED * (1 + bot.militaryLvl * 0.1);
+        missions.push({
+          type: 'attack',
+          owner: bot.nick,
+          targetNick: weakest.nick,
+          fleetCount: toSend,
+          x: bot.x, y: bot.y,
+          tx: weakest.x, ty: weakest.y,
+          speed
+        });
+      }
+    }
+
+    persist(bot.nick);
+  }
 }
 
 // ── Защита новичков ──────────────────────────────────────
@@ -213,6 +346,16 @@ function fleetUnitCost(currentFleet) {
 function defenseUnitCost(currentDef) {
   return Math.floor(DEFENSE_COST_BASE * Math.pow(DEFENSE_COST_MULT, currentDef));
 }
+// Подсчёт эффективного флота (на планете + в миссиях)
+function getEffectiveFleet(nick) {
+  const p = players[nick];
+  if (!p) return 0;
+  const inMissions = missions
+    .filter(m => m.owner === nick && m.fleetCount)
+    .reduce((sum, m) => sum + (m.fleetCount || 0), 0);
+  return p.fleet + inMissions;
+}
+
 function fleetBuyCost(currentFleet, amount) {
   let total = 0;
   for (let i = 0; i < amount; i++) total += fleetUnitCost(currentFleet + i);
@@ -289,6 +432,11 @@ setInterval(() => {
   }
   io.emit('state', getStatePayload());
 }, TICK_RATE);
+
+// ── AI боты (тик каждые 5 сек) ──────────────────────────
+setInterval(() => {
+  botTick();
+}, BOT_TICK_INTERVAL);
 
 // ── Тик миссий (50мс — плавное движение) ─────────────────
 setInterval(() => {
@@ -493,7 +641,8 @@ function getPublicState() {
       allianceName: p.allianceName || null,
       wins: p.wins || 0,
       spawnedAt: p.spawnedAt || 0,
-      isProtected: isProtected(p)
+      isProtected: isProtected(p),
+      isBot: p.isBot || false
     });
   }
   return list;
@@ -552,6 +701,9 @@ io.on('connection', (socket) => {
 
     io.emit('state', getStatePayload());
     io.emit('chat', { from: '⚙ система', text: `${nick} присоединился` });
+
+    // Управление ботами при изменении числа игроков
+    manageBots();
   });
 
   // ── Улучшение Economy (lvl) ─────────────────────────────
@@ -598,7 +750,9 @@ io.on('connection', (socket) => {
     if (!currentNick || !players[currentNick]) return;
     amount = Math.max(1, Math.floor(Number(amount) || 1));
     const p = players[currentNick];
-    const cost = fleetBuyCost(p.fleet, amount);
+    // Цена считается от эффективного флота (включая корабли в миссиях)
+    const effectiveFleet = getEffectiveFleet(currentNick);
+    const cost = fleetBuyCost(effectiveFleet, amount);
     if (p.res >= cost) {
       p.res -= cost;
       p.fleet += amount;
@@ -781,6 +935,9 @@ io.on('connection', (socket) => {
       players[currentNick].last_seen = Date.now();
       persist(currentNick);
       io.emit('state', getStatePayload());
+
+      // Управление ботами при изменении числа игроков
+      manageBots();
     }
   });
 });
@@ -799,6 +956,10 @@ async function start() {
   } catch (e) {
     console.warn('Redis load failed, starting with empty players:', e.message);
   }
+
+  // Инициализация ботов при старте
+  manageBots();
+
   const PORT = process.env.PORT || 3000;
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`🪐 Space Chaos v0.7 запущен на http://localhost:${PORT}`);
